@@ -1,0 +1,12 @@
+version: "2"
+services:
+  kdc:
+    build: ./kdc
+    volumes:
+      - /dev/urandom:/dev/random
+
+  client:
+    build: ./client
+    depends_on:
+      - kdc
+
