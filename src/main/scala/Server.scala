@@ -1,3 +1,4 @@
+import AuthenticationDirective.Config
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.http.scaladsl.Http
@@ -19,12 +20,12 @@ object Server extends App {
     sys.exit(1)
   }
 
-  val principal = args.head
+  val config = Config(principal = args.head, jaasName = "name")
 
   val route =
     path("hello") {
       get {
-        AuthenticationDirective.spnego(principal) { principal =>
+        AuthenticationDirective.spnego(config) { principal =>
           complete(
             HttpEntity(ContentTypes.`text/html(UTF-8)`,
                        s"Hello ${principal.toString}"))

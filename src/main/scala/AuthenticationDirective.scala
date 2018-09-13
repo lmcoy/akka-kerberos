@@ -17,15 +17,17 @@ import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
 
 object AuthenticationDirective {
+  case class Config(principal: String, jaasName: String)
+
   sealed trait AuthAnswer
 
   case class Challenge(challenge: Option[String]) extends AuthAnswer
   case class Principal(name: GSSName) extends AuthAnswer
 
-  private def createLoginContext(principal: String): LoginContext = {
-    val servicePrincipal = new KerberosPrincipal(principal)
+  private def createLoginContext(config: Config): LoginContext = {
+    val servicePrincipal = new KerberosPrincipal(config.principal)
     val subject = new Subject(false, Set(servicePrincipal).asJava, Set.empty.asJava, Set.empty.asJava)
-    val loginContext = new LoginContext("name", subject)
+    val loginContext = new LoginContext(config.jaasName, subject)
 
     loginContext.login()
     loginContext
@@ -54,7 +56,7 @@ object AuthenticationDirective {
         override def run() = f
       })
 
-
+    // do the authentication and return either the principal or a challenge. In case of an error, Left(...) is returned.
     doAs(loginContext) {
       val gssManager = GSSManager.getInstance()
       withContext(gssManager) { ctx =>
@@ -82,25 +84,24 @@ object AuthenticationDirective {
   }
 
   private def extractToken(s: String) = {
-    if(s.startsWith("Negotiate"))
-      Some(Base64.getDecoder.decode(s.substring("Negotiate ".length)))
-    else None
+    if(s.startsWith("Negotiate")) {
+      if (s.length > "Negotiate ".length)
+        Some(Base64.getDecoder.decode(s.substring("Negotiate ".length)))
+      else Some(Array.emptyByteArray)
+    } else None
   }
 
-  private def getAuthFromHeader(requestContext: RequestContext, principal: String) = {
+  private def getAuthFromHeader(requestContext: RequestContext, config: Config) = {
+    // find Authorization header and use for authentication. If no Authorization is found create a new Challenge
     requestContext.request.headers.find(header => header.name() == "Authorization")
       .flatMap(header => extractToken(header.value()))
-      .map(token => {
-        val r = kerberos(createLoginContext(principal))(token)
-        r
-      }
-      )
+      .map(token => kerberos(createLoginContext(config))(token))
       .getOrElse(Right(Challenge(None)))
   }
 
-  def spnego(principal: String): Directive[Tuple1[GSSName]] = {
+  def spnego(config: Config): Directive[Tuple1[GSSName]] = {
     extract(ctx => {
-      getAuthFromHeader(ctx, principal)
+      getAuthFromHeader(ctx, config)
     }).flatMap{
       case Right(auth) => auth match {
         case c: Challenge =>
