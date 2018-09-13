@@ -22,7 +22,7 @@ object AuthenticationDirective {
   case class Challenge(challenge: Option[String]) extends AuthAnswer
   case class Principal(name: GSSName) extends AuthAnswer
 
-  def createLoginContext(principal: String): LoginContext = {
+  private def createLoginContext(principal: String): LoginContext = {
     val servicePrincipal = new KerberosPrincipal(principal)
     val subject = new Subject(false, Set(servicePrincipal).asJava, Set.empty.asJava, Set.empty.asJava)
     val loginContext = new LoginContext("name", subject)
@@ -31,7 +31,7 @@ object AuthenticationDirective {
     loginContext
   }
 
-  def kerberos(loginContext: LoginContext)(clientToken : Array[Byte]) = {
+  private def kerberos(loginContext: LoginContext)(clientToken : Array[Byte]) = {
 
     def withContext[T](manager: GSSManager)(f: GSSContext => T): T = {
       val ctx = manager.createContext(Option.empty[GSSCredential].orNull)
@@ -70,7 +70,7 @@ object AuthenticationDirective {
     }
   }
 
-  def negotiationRejection(challenge: Challenge): AuthenticationFailedRejection = {
+  private def negotiationRejection(challenge: Challenge): AuthenticationFailedRejection = {
     challenge.challenge match {
       case Some(ch) => val header = RawHeader(
         "WWW-Authenticate",
@@ -81,26 +81,26 @@ object AuthenticationDirective {
     }
   }
 
-  def extractToken(s: String) = {
+  private def extractToken(s: String) = {
     if(s.startsWith("Negotiate"))
       Some(Base64.getDecoder.decode(s.substring("Negotiate ".length)))
     else None
   }
 
-  def getAuthFromHeader(requestContext: RequestContext) = {
+  private def getAuthFromHeader(requestContext: RequestContext, principal: String) = {
     requestContext.request.headers.find(header => header.name() == "Authorization")
       .flatMap(header => extractToken(header.value()))
       .map(token => {
-        val r = kerberos(createLoginContext("HTTP/045fd803a9b2"))(token)
+        val r = kerberos(createLoginContext(principal))(token)
         r
       }
       )
       .getOrElse(Right(Challenge(None)))
   }
 
-  def spnego: Directive[Tuple1[GSSName]] = {
+  def spnego(principal: String): Directive[Tuple1[GSSName]] = {
     extract(ctx => {
-      getAuthFromHeader(ctx)
+      getAuthFromHeader(ctx, principal)
     }).flatMap{
       case Right(auth) => auth match {
         case c: Challenge =>

@@ -14,10 +14,17 @@ object Server extends App {
   // needed for the future flatMap/onComplete in the end
   implicit val executionContext = system.dispatcher
 
+  if (args.length < 1) {
+    println ("error: no principal as cmd line argument")
+    sys.exit(1)
+  }
+
+  val principal = args.head
+
   val route =
     path("hello") {
       get {
-        AuthenticationDirective.spnego { principal =>
+        AuthenticationDirective.spnego(principal) { principal =>
           complete(
             HttpEntity(ContentTypes.`text/html(UTF-8)`,
                        s"Hello ${principal.toString}"))
