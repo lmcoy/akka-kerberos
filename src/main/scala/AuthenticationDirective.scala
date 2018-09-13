@@ -61,7 +61,7 @@ object AuthenticationDirective {
         for {
           challenge <- Try(ctx.acceptSecContext(clientToken, 0, clientToken.length)) match {
             case Success(value) => Right(value).right
-            case Failure(exception) => exception.printStackTrace()
+            case Failure(exception) =>
               Left(s"${exception.toString} ${exception.getMessage}").right
           }
           answer <- Right(principalOrChallenge(ctx, challenge)).right
@@ -91,28 +91,21 @@ object AuthenticationDirective {
     requestContext.request.headers.find(header => header.name() == "Authorization")
       .flatMap(header => extractToken(header.value()))
       .map(token => {
-        println("TOKEN: " + Base64.getEncoder.encodeToString(token))
         val r = kerberos(createLoginContext("HTTP/045fd803a9b2"))(token)
-        println(r)
         r
       }
       )
-      .getOrElse({println("init"); Right(Challenge(None))})
+      .getOrElse(Right(Challenge(None)))
   }
 
   def spnego: Directive[Tuple1[GSSName]] = {
     extract(ctx => {
-      print("HEADER: ")
-      ctx.request.headers.foreach(println)
       getAuthFromHeader(ctx)
     }).flatMap{
       case Right(auth) => auth match {
         case c: Challenge =>
-          println("challenge")
           reject(negotiationRejection(c))
         case Principal(p) =>
-          println("provide")
-          println(p.toString)
           provide(p)
       }
       case Left(msg) => reject
